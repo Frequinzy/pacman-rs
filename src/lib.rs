@@ -12,7 +12,7 @@ enum Direction {
     North,
 }
 
-const DIRECTIONS: [Direction; 4]= [Direction::North, Direction::West, Direction::South, Direction::East];
+const DIRECTIONS: [Direction; 4] = [Direction::North, Direction::West, Direction::South, Direction::East];
 
 /// An enum containing the different modes a ghost can be in
 #[derive(Debug, PartialEq)]
@@ -22,13 +22,15 @@ enum Mode {
     Frightened,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 enum Personality {
-    Blinky,
     Pinky,
+    Blinky,
     Inky,
     Clyde,
 }
+
+const PERSONALITIES: [Personality; 4] = [Personality::Pinky, Personality::Blinky, Personality::Inky, Personality::Clyde];
 
 /// Struct containing information about a ghost
 #[derive(Debug)]
@@ -53,15 +55,18 @@ impl Pacman {
 #[derive(Debug)]
 struct Ghost {
     pos: Position,
+    scatter_target: Position,
     dir: Direction,
     mode: Mode,
 }
 
 impl Ghost {
-    fn new(pos: Position, mode: Mode) -> Self {
+    fn new(pos: Position, scatter_target: Position) -> Self {
         let dir = Direction::North;
+        let mode = Mode::Chase;
         Self {
             pos,
+            scatter_target,
             dir,
             mode,
         }
@@ -98,8 +103,9 @@ impl GameState {
         let mut fruits = HashSet::new();
         let mut power_ups = HashSet::new();
         let mut walls = HashSet::new();
+        let mut scatter_pos = Vec::with_capacity(4);
+        let mut ghosts = HashMap::new();
         let score = 0;
-        let ghosts = HashMap::new();
 
         for r in 0..START_BOARD.len() {
             for c in 0..START_BOARD[r].len() {
@@ -108,6 +114,7 @@ impl GameState {
                     '.' => { fruits.insert((r, c)); },
                     '*' => { power_ups.insert((r, c)); },
                     'p' => pacman_pos = (r, c),
+                    's' => scatter_pos.push((r, c)),
                     'i' => { intersections.insert((r, c)); fruits.insert((r, c)); },
                     'j' => { intersections.insert((r, c)); }
                     'o' => { special_intersections.insert((r, c)); intersections.insert((r, c)); fruits.insert((r, c)); },
@@ -116,6 +123,16 @@ impl GameState {
                     _ => panic!("Not a valid character"),
                 }
             }
+        }
+
+        for i in 0..scatter_pos.len()  {
+            let personality = match PERSONALITIES[i] {
+                Personality::Pinky => Personality::Pinky,
+                Personality::Blinky => Personality::Blinky,
+                Personality::Inky => Personality::Inky,
+                Personality::Clyde => Personality::Clyde,
+            };
+            ghosts.insert(personality, Ghost::new((0, 0), scatter_pos[i]));
         }
 
         let pacman = Pacman::new(pacman_pos);
@@ -141,14 +158,18 @@ impl GameState {
         for (personality, ghost) in &mut self.ghosts {
             if self.intersections.contains(&ghost.pos) {
                 let target_square: Position = match (personality, &ghost.mode) {
-                    (Personality::Blinky, Mode::Chase) => {todo!()},
-                    (Personality::Blinky, Mode::Scatter) => {todo!()},
-                    (Personality::Pinky, Mode::Chase) => {todo!()},
-                    (Personality::Pinky, Mode::Scatter) => {todo!()},
+                    (Personality::Pinky, Mode::Chase) => {
+                        match self.pacman.current_dir {
+                            Direction::North => (self.pacman.pos.0 - 4, self.pacman.pos.1 - 4),
+                            Direction::East => (self.pacman.pos.0 + 4, self.pacman.pos.1),
+                            Direction::South => (self.pacman.pos.0, self.pacman.pos.1 + 4), 
+                            Direction::West => (self.pacman.pos.0 - 4, self.pacman.pos.1),
+                        }
+                    },
+                    (Personality::Blinky, Mode::Chase) => {self.pacman.pos},
                     (Personality::Inky, Mode::Chase) => {todo!()},
-                    (Personality::Inky, Mode::Scatter) => {todo!()},
                     (Personality::Clyde, Mode::Chase) => {todo!()},
-                    (Personality::Clyde, Mode::Scatter) => {todo!()},
+                    (_, Mode::Scatter) => (ghost.scatter_target),
                     (_, Mode::Frightened) => {(0, 0)},
                 };
 
@@ -175,7 +196,7 @@ impl GameState {
 
             let next_square = get_next_square(&ghost.pos, &ghost.dir);
             if self.walls.contains(&next_square) { 
-                ghost.dir = check_dirs(&self.walls, ghost, false)[0];
+                ghost.dir = check_dirs(&self.walls, ghost, false)[0]; // Should only be one option.
                 let next_square = get_next_square(&ghost.pos, &ghost.dir);
             }
 
@@ -256,13 +277,17 @@ fn opposite_direction(dir: &Direction) -> Direction {
 /// * '.' = fruit
 /// * '*' = power fruit
 /// * 'p' = pacman
+/// * 'P' = Pinky Scatter target
+/// * 'B' = Binky Scatter target
+/// * 'I' = Inky Scatter target
+/// * 'C' = Clyde Scatter target
 /// * 'i' = intersection whre ghost ai will need to make decision + fruit
 /// * 'j' = intersection whre ghost ai will need to make decision
 /// * 'o' = special intersection + fruit
 /// * 'k' = special intersection
 /// * ' ' = empty square
 const START_BOARD: [[char; 28]; 36] = [
-    [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+    [' ', 's', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 's', ' '],
     [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
     [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
     ['w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w'],
@@ -297,7 +322,7 @@ const START_BOARD: [[char; 28]; 36] = [
     ['w', '.', '.', '.', '.', '.', '.', '.', '.', '.', '.', '.', 'i', '.', '.', 'i', '.', '.', '.', '.', '.', '.', '.', '.', '.', '.', '.', 'w'],
     ['w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w'],
     [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-    [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+    ['s', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 's'],
 ];
 
 #[cfg(test)]
@@ -336,6 +361,10 @@ mod tests {
             } else {
                 test_board[sp_intersection.0][sp_intersection.1] = 'o';
             }
+        }
+
+        for (_, ghost) in gs.ghosts {
+            test_board[ghost.scatter_target.0][ghost.scatter_target.1] = 's';
         }
 
         test_board[gs.pacman.pos.0][gs.pacman.pos.1] = 'p';
